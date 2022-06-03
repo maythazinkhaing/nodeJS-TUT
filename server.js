@@ -5,11 +5,13 @@ const path = require('path');
 
 const logEvents = require('./logEvents');
 const EventEmitter = require('events');
-const { fi } = require('date-fns/locale');
+
 
 class Emitter extends EventEmitter {};
 
 const myEmitter = new Emitter();
+
+myEmitter.on('log', (msg, fileName) => logEvents(msg, fileName));
 
 const PORT = process.env.PORT || 3500;
 
@@ -17,12 +19,17 @@ const serveFile = async (filePath, contentType , response)=>{
 
     try {
         
-        const data = await fsPromises.readFile(filePath, 'utf8');
-        response.writeHead( 200 , {'Content-Type': contentType});
-        response.end(data);
+        const rawdata = await fsPromises.readFile(
+            filePath,
+            !contentType.includes('image') ? 'utf8' : ''
+        );
+        const data = contentType === 'application/json' ? JSON.parse(rawdata) : rawdata;
+        response.writeHead( filePath.includes('404.html') ? 404 : 200   , {'Content-Type': contentType});
+        response.end( contentType === 'application/json' ? JSON.stringify(data) : data );
 
-    } catch (error) {
+    } catch (err) {
         console.error(err);
+        myEmitter.emit('log',  `${err.name}: ${err.message}`, 'errLog.txt');
         response.statusCode = 500;
         response.end();
     }
@@ -31,12 +38,13 @@ const serveFile = async (filePath, contentType , response)=>{
 
 const server = http.createServer((req , res) =>{
     console.log(req.url, req.method);
+    myEmitter.emit('log',  `${req.url}\t${req.method}`, 'reqLog.txt');
 
     const extension = path.extname(req.url);
 
     let contentType;
 
-    switch (contentType) {
+    switch (extension) {
         case '.css': contentType = 'text/css';break;
         case '.js': contentType = 'text/javascript';break;
         case '.json': contentType = 'application/json';break;
@@ -80,7 +88,6 @@ const server = http.createServer((req , res) =>{
         }
     }
 
-    console.log(filePath);
 })
 
 
@@ -89,10 +96,10 @@ server.listen(PORT , () => {
     console.log(`Server is running on port ${PORT}`);
 })
 
-// myEmitter.on('log', (msg) => logEvents(msg));
 
 
-//         myEmitter.emit('log',  'LOG EVENT EMITTED!');
+
+        
 
 
 
